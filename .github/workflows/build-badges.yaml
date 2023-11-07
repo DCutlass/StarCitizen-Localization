@@ -1,0 +1,63 @@
+name: Update badges
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-badge:
+    name: Update validation badges
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        localization: [
+          french_(france),
+          german_(germany),
+          italian_(italy),
+          portuguese_(brazil),
+          spanish_(spain)
+        ]
+
+    steps:
+    - name: Checkout current repository
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+        cache: 'npm'
+        cache-dependency-path: tools/ini-utils/package-lock.json
+
+    - name: Build ini-utils
+      working-directory: tools/ini-utils
+      run: |
+        npm install
+        npm run build
+
+    - name: Validate
+      id: validate
+      run: node ./tools/ini-utils/dist/src/index.js validate "$GITHUB_WORKSPACE/data/Localization/english/global.ini" "$GITHUB_WORKSPACE/data/Localization/${{ matrix.localization }}/global.ini"
+
+    - name: Create the svg badge
+      run: touch ".github/badges/${{ matrix.localization }}.svg"
+
+    - name: Build error badge
+      if: steps.validate.outputs.is-valid == 'false'
+      uses: emibcn/badge-action@v2.0.2
+      with:
+        label: ${{ matrix.localization }}
+        status: errors (${{ steps.validate.outputs.invalid }})
+        color: 'red'
+        path: '.github/badges/${{ matrix.localization }}.svg'
+
+    - name: Build valid badge
+      if: steps.validate.outputs.is-valid == 'true'
+      uses: emibcn/badge-action@v2.0.2
+      with:
+        label: ${{ matrix.localization }}
+        status: valid
+        color: 'green'
+        path: '.github/badges/${{ matrix.localization }}.svg'
