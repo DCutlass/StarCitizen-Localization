@@ -6,6 +6,7 @@ import { TildPlaceholder }    from '../shared/types/tild-placeholder.type';
 // Helpers
 import { IniHelper }          from '../shared/helpers/ini.helper';
 import { StringHelper }       from '../shared/helpers/string.helper';
+import * as action from '@actions/core';
 
 
 export class ValidateCommand
@@ -38,12 +39,20 @@ export class ValidateCommand
       console.log('==================================================');
       console.log(`File "${file.path}"...`);
       console.log('==================================================');
-      const isValid = ValidateCommand.validateIni(referenceData, file);
-      if (!isValid)
+      const result = ValidateCommand.validateIni(referenceData, file);
+      if (result.invalid !== 0)
       {
         success = false;
         console.log();
         console.log(`File "${file.path}" is invalid`);
+      }
+
+      // Export results to GitHub Action outputs
+      if(options.ci)
+      {
+        action.setOutput('total', result.total);
+        action.setOutput('invalid', result.invalid);
+        action.setOutput('percent', result.invalid / result.total * 100);
       }
 
       console.log('==================================================');
@@ -53,9 +62,9 @@ export class ValidateCommand
     if(options.ci && !success) process.exit(1);
 	}
 
-  private static validateIni(referenceData: Ini, fileData: Ini): boolean
+  private static validateIni(referenceData: Ini, fileData: Ini): { total: number, invalid: number }
   {
-    let success = true;
+    let invalid = 0;
 
     // NOTE Check if all keys from reference are present in source
     {
@@ -65,7 +74,7 @@ export class ValidateCommand
       if (!result)
       {
         console.log('  => 🔥 One or more keys are missing in source file');
-        success = false;
+        invalid++;
       }
       else
         console.log('  => ✅ All keys are present in the file');
@@ -81,7 +90,7 @@ export class ValidateCommand
       if (!result)
       {
         console.log('  => 🔥 One or more placeholders are missing in source file');
-        success = false;
+        invalid++;
       }
       else
         console.log('  => ✅ All placeholders are present in source file');
@@ -97,13 +106,16 @@ export class ValidateCommand
       if (!result)
       {
         console.log('  => 🔥 One or more placeholders are missing in source file');
-        success = false;
+        invalid++;
       }
       else
         console.log('  => ✅ All placeholders are present in source file');
     }
 
-    return success;
+    return {
+      total: Object.keys(referenceData.content).length,
+      invalid
+    };
   }
 
   /**
@@ -146,12 +158,12 @@ export class ValidateCommand
     for (const [key, value] of Object.entries(referenceData.content))
     {
       if(value === undefined)
-        continue;    
+        continue;
 
       const matches = StringHelper.getAllMatchesGroups<TildPlaceholder>(value, placeholderRegex);
 
       // Check if placeholders of this key is valid
-      for (const match of matches) 
+      for (const match of matches)
       {
         if(!ValidateCommand.isValidTildPlaceholder(match))
         {
@@ -197,7 +209,7 @@ export class ValidateCommand
    * @param sourceData
    * @returns
    */
-  private static validatePercentPlaceholders(referenceData: Ini, sourceData: Ini): boolean 
+  private static validatePercentPlaceholders(referenceData: Ini, sourceData: Ini): boolean
   {
     const placeholderRegex = /%(?<name>\w+)/g; // match %name
     let isValid = true;
@@ -208,7 +220,7 @@ export class ValidateCommand
     for (const [key, value] of Object.entries(referenceData.content))
     {
       if(value === undefined)
-        continue;    
+        continue;
 
       const matches = StringHelper.getAllMatchesGroups<PercentPlaceholder>(value, placeholderRegex);
       referencePlaceholders.set(key, matches);
@@ -226,7 +238,7 @@ export class ValidateCommand
 
       if(sourceValue === undefined)
         continue;
-      
+
       // Check if values from reference are present in source
       for (const placeholder of placeholders)
       {
@@ -246,12 +258,12 @@ export class ValidateCommand
    * Check if placeholder is valid
    * @param key The key of the entry
    * @param match The match result
-   * @returns 
+   * @returns
    */
-  private static isValidTildPlaceholder(placeholder: TildPlaceholder): boolean 
+  private static isValidTildPlaceholder(placeholder: TildPlaceholder): boolean
   {
     const parameter = placeholder.parameter;
-    
+
     // Check if parameter contains opening parenthesis, which means that it is not a valid placeholder
     const badTokens = ['(', ')', '~', ']', '\\n'];
     return !badTokens.some(token => parameter.indexOf(token) !== -1)
