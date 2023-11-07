@@ -48,11 +48,14 @@ export class ValidateCommand
       }
 
       // Export results to GitHub Action outputs
-      if(options.ci)
+      if(process.env['CI'] !== undefined)
       {
         action.setOutput('total', result.total);
         action.setOutput('invalid', result.invalid);
-        action.setOutput('percent', result.invalid / result.total * 100);
+        action.setOutput('is-valid', result.invalid === 0);
+
+        const percent = result.invalid / result.total * 100
+        action.setOutput('percent', percent.toFixed(2));
       }
 
       console.log('==================================================');
